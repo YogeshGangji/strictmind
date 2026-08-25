@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trader's Lock - Guardian</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        body {
+            background: #0B0F19;
+            color: #FFFFFF;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .card {
+            background: #1E293B;
+            border: 1px solid #334155;
+            border-radius: 16px;
+            padding: 30px;
+            text-align: center;
+            max-width: 400px;
+            width: 100%;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        }
+        h1 {
+            color: #00E5FF;
+            font-size: 24px;
+            margin-bottom: 8px;
+            font-weight: 800;
+        }
+        p {
+            color: #94A3B8;
+            font-size: 14px;
+            margin-bottom: 24px;
+            line-height: 1.5;
+        }
+        #qrcode {
+            background: #FFFFFF;
+            padding: 16px;
+            border-radius: 12px;
+            display: inline-block;
+            margin-bottom: 20px;
+        }
+        .status {
+            font-weight: bold;
+            color: #10B981;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1 id="title">GUARDIAN PORTAL</h1>
+        <p id="desc">Scanning...</p>
+        <div id="qrcode"></div>
+        <div id="status" class="status"></div>
+    </div>
+
+    <script>
+        const PAIR_SALT = "trader_lock_pairing_salt_2026";
+
+        // Fast SHA-256 hash implementation in pure JS
+        async function sha256(message) {
+            const msgBuffer = new TextEncoder().encode(message);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        async function processPayload() {
+            const hash = window.location.hash;
+            if (!hash) {
+                document.getElementById("desc").innerText = "Please scan a QR code shown on the user's phone.";
+                return;
+            }
+
+            const params = new URLSearchParams(hash.substring(1));
+            const qrcodeDiv = document.getElementById("qrcode");
+            qrcodeDiv.innerHTML = ""; // Clear loader
+
+            if (params.has("pair")) {
+                const pairToken = params.get("pair");
+                document.getElementById("title").innerText = "PAIRING REQUEST";
+                document.getElementById("desc").innerText = "Displaying response code. Let the user scan this screen to complete pairing.";
+
+                const responseToken = await sha256(pairToken + PAIR_SALT);
+                // Save pairing token to represent Guardian phone identity
+                localStorage.setItem("guardian_secret", responseToken);
+
+                new QRCode(qrcodeDiv, {
+                    text: responseToken,
+                    width: 200,
+                    height: 200
+                });
+                document.getElementById("status").innerText = "✓ Key Generated & Stored";
+            } 
+            else if (params.has("challenge")) {
+                const challengeToken = params.get("challenge");
+                const savedSecret = localStorage.getItem("guardian_secret");
+
+                if (!savedSecret) {
+                    document.getElementById("title").innerText = "DEVICE UNPAIRED";
+                    document.getElementById("desc").innerText = "This phone is not paired. Please pair with the user's app first.";
+                    return;
+                }
+
+                document.getElementById("title").innerText = "UNLOCK REQUEST";
+                document.getElementById("desc").innerText = "Displaying signed challenge. Let the user scan this screen to unlock.";
+
+                const unlockResponse = await sha256(challengeToken + savedSecret);
+
+                new QRCode(qrcodeDiv, {
+                    text: unlockResponse,
+                    width: 200,
+                    height: 200
+                });
+                document.getElementById("status").innerText = "✓ Auth Token Generated";
+            }
+        }
+
+        window.addEventListener("hashchange", processPayload);
+        processPayload();
+    </script>
+</body>
+</html>
