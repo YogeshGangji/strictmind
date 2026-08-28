@@ -65,69 +65,68 @@
     </div>
 
     <script>
-        const PAIR_SALT = "strictmind_lock_pairing_salt_2026";
+    const PAIR_SALT = "strictmind_lock_pairing_salt_2026";
 
-        // Fast SHA-256 hash implementation in pure JS
-        async function sha256(message) {
-            const msgBuffer = new TextEncoder().encode(message);
-            const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    async function sha256(message) {
+        const msgBuffer = new TextEncoder().encode(message);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        // Ensure every byte is exactly 2 hex characters (lowercase)
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    async function processPayload() {
+        const hash = window.location.hash;
+        if (!hash) {
+            document.getElementById("desc").innerText = "Ready. Please scan a QR from the StrictMind app.";
+            return;
         }
 
-        async function processPayload() {
-            const hash = window.location.hash;
-            if (!hash) {
-                document.getElementById("desc").innerText = "Please scan a QR code shown on the user's phone.";
-                return;
-            }
+        const params = new URLSearchParams(hash.substring(1));
+        const qrcodeDiv = document.getElementById("qrcode");
+        qrcodeDiv.innerHTML = "Generating..."; 
 
-            const params = new URLSearchParams(hash.substring(1));
-            const qrcodeDiv = document.getElementById("qrcode");
-            qrcodeDiv.innerHTML = ""; // Clear loader
-
+        try {
             if (params.has("pair")) {
                 const pairToken = params.get("pair");
-                document.getElementById("title").innerText = "PAIRING REQUEST";
-                document.getElementById("desc").innerText = "Displaying response code. Let the user scan this screen to complete pairing.";
+                document.getElementById("title").innerText = "STEP 1: PAIRING";
+                document.getElementById("desc").innerHTML = "<b>Pairing Key Generated!</b><br>Ask the user to scan this code to link your phone.";
 
                 const responseToken = await sha256(pairToken + PAIR_SALT);
-                // Save pairing token to represent Guardian phone identity
                 localStorage.setItem("guardian_secret", responseToken);
 
-                new QRCode(qrcodeDiv, {
-                    text: responseToken,
-                    width: 200,
-                    height: 200
-                });
-                document.getElementById("status").innerText = "✓ Key Generated & Stored";
+                qrcodeDiv.innerHTML = "";
+                new QRCode(qrcodeDiv, { text: responseToken, width: 200, height: 200 });
+                document.getElementById("status").innerText = "✓ Secret Saved in this Browser";
             } 
             else if (params.has("challenge")) {
                 const challengeToken = params.get("challenge");
                 const savedSecret = localStorage.getItem("guardian_secret");
 
                 if (!savedSecret) {
-                    document.getElementById("title").innerText = "DEVICE UNPAIRED";
-                    document.getElementById("desc").innerText = "This phone is not paired. Please pair with the user's app first.";
+                    document.getElementById("title").innerText = "NOT PAIRED";
+                    document.getElementById("desc").innerHTML = "<span style='color:#ef4444'>This browser has no pairing data.</span><br>Please pair this specific browser first.";
+                    qrcodeDiv.innerHTML = "❌";
                     return;
                 }
 
-                document.getElementById("title").innerText = "UNLOCK REQUEST";
-                document.getElementById("desc").innerText = "Displaying signed challenge. Let the user scan this screen to unlock.";
+                document.getElementById("title").innerText = "STEP 2: UNLOCKING";
+                document.getElementById("desc").innerHTML = "<b>Unlock Token Generated!</b><br>Ask the user to scan this to open their app.";
 
                 const unlockResponse = await sha256(challengeToken + savedSecret);
 
-                new QRCode(qrcodeDiv, {
-                    text: unlockResponse,
-                    width: 200,
-                    height: 200
-                });
-                document.getElementById("status").innerText = "✓ Auth Token Generated";
+                qrcodeDiv.innerHTML = "";
+                new QRCode(qrcodeDiv, { text: unlockResponse, width: 200, height: 200 });
+                document.getElementById("status").innerText = "✓ Auth Token Ready";
             }
+        } catch (err) {
+            document.getElementById("desc").innerText = "Error: " + err.message;
         }
+    }
 
-        window.addEventListener("hashchange", processPayload);
-        processPayload();
-    </script>
+    window.addEventListener("hashchange", processPayload);
+    processPayload();
+</script>
+   
 </body>
 </html>
